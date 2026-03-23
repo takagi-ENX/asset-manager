@@ -112,6 +112,7 @@ textarea{resize:vertical;font-family:monospace;font-size:11px;}
   <button class="nb active" data-tab="dash">ダッシュボード</button>
   <button class="nb" data-tab="list">資産一覧</button>
   <button class="nb" data-tab="detail" id="nbDetail">詳細</button>
+<button class="nb" data-tab="dividend">配当</button>
 </div>
 <div class="pnl active" id="pnl-dash">
   <div class="m4" id="sumCards"></div>
@@ -131,6 +132,7 @@ textarea{resize:vertical;font-family:monospace;font-size:11px;}
   <div id="assetList"></div>
 </div>
 <div class="pnl" id="pnl-detail"><div id="detailBody"></div></div>
+<div class="pnl" id="pnl-dividend"><div id="dividendBody"></div></div>
 <div class="ov" id="overlay"><div class="md" id="modalBody"></div></div>
 <div class="toast" id="toast"></div>
 
@@ -238,7 +240,10 @@ function grandTotal(){
 function switchTab(tab){
   document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.pnl').forEach(p=>p.classList.toggle('active',p.id==='pnl-'+tab));
-  if(tab==='dash')renderDash();else if(tab==='list')renderList();else renderDetail();
+  if(tab==='dash')renderDash();
+  else if(tab==='list')renderList();
+  else if(tab==='dividend')renderDividendDash();
+  else renderDetail();
 }
 
 function renderDash(){
@@ -328,7 +333,14 @@ function renderDetail(){
     </div>
     ${!simple?`<div class="sh"><div class="sh-t">取引履歴</div><div style="display:flex;gap:8px"><button class="btn-sell" id="sellBtn">− 売却</button><button class="btn-p" id="buyBtn">+ 購入</button></div></div><div id="txTbl"></div>`:''}`;
   document.getElementById('updBtn').addEventListener('click',()=>updatePrice(a.id));
-  if(!simple){document.getElementById('buyBtn').addEventListener('click',()=>openBuyModal(a.id));document.getElementById('sellBtn').addEventListener('click',()=>openSellModal(a.id));renderTxTable(a);}
+  if(!simple){
+    document.getElementById('buyBtn').addEventListener('click',()=>openBuyModal(a.id));
+    document.getElementById('sellBtn').addEventListener('click',()=>openSellModal(a.id));
+    renderTxTable(a);
+    // 配当セクションを追加
+    const divSec=document.createElement('div');divSec.id='divSection';el.appendChild(divSec);
+    renderDetailDividend(a);
+  }
 }
 
 function renderTxTable(a){
@@ -365,7 +377,7 @@ function bindFE(){
 }
 function openAddModal(){editId=null;showModal(`<div class="md-t">資産を追加</div><div class="fg"><label class="fl">カテゴリ</label><select id="f-cat">${Object.keys(CAT).map(k=>`<option value="${k}">${CAT[k].emoji} ${CAT[k].label}</option>`).join('')}</select></div><div class="fg"><label class="fl">名称</label><input id="f-nm" placeholder="例: eMAXIS Slim 全世界株式"></div><div id="f-sw">${buildSubSec('deposit',null)}</div><div id="f-base">${baseFields('deposit',null)}</div><div class="ma"><button class="btn-s" id="f-cancel">キャンセル</button><button class="btn-p" id="f-submit">追加</button></div>`);bindFE();}
 function openEditModal(id){editId=id;const a=S.assets.find(x=>x.id===id);if(!a)return;showModal(`<div class="md-t">資産を編集</div><div class="fg"><label class="fl">カテゴリ</label><select id="f-cat">${Object.keys(CAT).map(k=>`<option value="${k}"${a.category===k?' selected':''}>${CAT[k].emoji} ${CAT[k].label}</option>`).join('')}</select></div><div class="fg"><label class="fl">名称</label><input id="f-nm" value="${a.name}"></div><div id="f-sw">${buildSubSec(a.category,a)}</div><div id="f-base">${baseFields(a.category,a)}</div><div class="ma"><button class="btn-s" id="f-cancel">キャンセル</button><button class="btn-p" id="f-submit">更新</button></div>`);bindFE();}
-function submitAsset(){const name=(document.getElementById('f-nm')?.value||'').trim();if(!name){alert('名称を入力してください');return;}const cat=document.getElementById('f-cat').value,sub=document.getElementById('f-sub')?.value||undefined,id=editId||uid(),old=S.assets.find(x=>x.id===id)||{},ok=sub&&SUBTYPES[sub]?.tickerOk;const a={...old,id,name,category:cat,subtype:sub,ticker:ok?(document.getElementById('f-tkr')?.value?.trim()||undefined):undefined,coinId:(document.getElementById('f-cid')?.value?.trim()||'').toLowerCase()||undefined,bal:(cat==='deposit'||cat==='other')?+(document.getElementById('f-bal')?.value||0):old.bal,cur:document.getElementById('f-cur')?.value||'JPY',note:document.getElementById('f-nte')?.value||'',purchases:old.purchases||[],sells:old.sells||[]};if(editId)S.assets=S.assets.map(x=>x.id===id?a:x);else S.assets.push(a);saveAndToast(editId?'更新しました ✓':'追加しました ✓');closeModal();renderList();}
+function submitAsset(){const name=(document.getElementById('f-nm')?.value||'').trim();if(!name){alert('名称を入力してください');return;}const cat=document.getElementById('f-cat').value,sub=document.getElementById('f-sub')?.value||undefined,id=editId||uid(),old=S.assets.find(x=>x.id===id)||{},ok=sub&&SUBTYPES[sub]?.tickerOk;const a={...old,id,name,category:cat,subtype:sub,ticker:ok?(document.getElementById('f-tkr')?.value?.trim()||undefined):undefined,coinId:(document.getElementById('f-cid')?.value?.trim()||'').toLowerCase()||undefined,bal:(cat==='deposit'||cat==='other')?+(document.getElementById('f-bal')?.value||0):old.bal,cur:document.getElementById('f-cur')?.value||'JPY',note:document.getElementById('f-nte')?.value||'',purchases:old.purchases||[],sells:old.sells||[],dividends:old.dividends||[]};if(editId)S.assets=S.assets.map(x=>x.id===id?a:x);else S.assets.push(a);saveAndToast(editId?'更新しました ✓':'追加しました ✓');closeModal();renderList();}
 function deleteAsset(id){if(!confirm('この資産を削除しますか？'))return;S.assets=S.assets.filter(a=>a.id!==id);if(curId===id){curId=null;document.getElementById('nbDetail').textContent='詳細';}saveAndToast('削除しました ✓');renderList();}
 
 function openBuyModal(aid){const a=S.assets.find(x=>x.id===aid),today=new Date().toISOString().split('T')[0];showModal(`<div class="md-t">${a.name} — 購入を追加</div><div class="fg"><label class="fl">購入日</label><input id="mf-dt" type="date" value="${today}"></div><div class="fg"><label class="fl">取得単価（${a.cur||'JPY'}）</label><input id="mf-pr" type="number" placeholder="0" step="any"></div><div class="fg"><label class="fl">数量</label><input id="mf-qt" type="number" placeholder="0" step="any"></div><div class="fg"><label class="fl">メモ（任意）</label><input id="mf-nt" placeholder="SBI証券など"></div><div class="ma"><button class="btn-s" id="m-cancel">キャンセル</button><button class="btn-p" id="m-submit">追加</button></div>`);document.getElementById('m-cancel').addEventListener('click',closeModal);document.getElementById('m-submit').addEventListener('click',()=>{const price=+document.getElementById('mf-pr').value,qty=+document.getElementById('mf-qt').value;if(!price||!qty){alert('単価と数量を入力してください');return;}if(!a.purchases)a.purchases=[];a.purchases.push({id:uid(),date:document.getElementById('mf-dt').value,price,qty,note:document.getElementById('mf-nt').value||''});a.purchases.sort((x,y)=>x.date.localeCompare(y.date));saveAndToast('購入を記録しました ✓');closeModal();renderDetail();});}
@@ -449,6 +461,203 @@ async function fetchPrices(){
   // ログをモーダルで表示
   showModal(`<div class="md-t">🔄 価格更新結果</div><div style="background:var(--bg2);border-radius:var(--radius);padding:12px;font-size:12px;font-family:monospace;line-height:1.8;max-height:300px;overflow-y:auto">${log.map(l=>`<div>${l}</div>`).join('')}</div><div class="ma"><button class="btn-p" id="log-close">閉じる</button></div>`);
   document.getElementById('log-close').addEventListener('click',closeModal);
+}
+
+
+// ─── 配当機能 ───────────────────────────────────────────
+
+function calcDividendStats(a){
+  const divs=a.dividends||[];
+  const s=calcStats(a);
+  const rate=a.cur==='USD'?(S.usdJpy||150):1;
+  const total=divs.reduce((sum,d)=>sum+(+d.totalAmount||0),0);
+  // 年間配当（今年）
+  const thisYear=new Date().getFullYear();
+  const annual=divs.filter(d=>new Date(d.date).getFullYear()===thisYear).reduce((sum,d)=>sum+(+d.totalAmount||0),0);
+  // 直近1株配当（年間）
+  const annualPerShare=a.annualDividendPerShare||0;
+  const holdQty=s.qty;
+  const estAnnual=annualPerShare*holdQty*rate;
+  // 利回り
+  const yieldOnCost=s.cost>0&&estAnnual>0?estAnnual/s.cost*100:0;
+  const yieldOnPrice=s.val>0&&estAnnual>0?estAnnual/s.val*100:0;
+  return{total,annual,estAnnual,yieldOnCost,yieldOnPrice,count:divs.length};
+}
+
+async function fetchDividends(assetId){
+  const a=S.assets.find(x=>x.id===assetId);
+  if(!a||!a.ticker){showToast('ティッカーが設定されていません');return;}
+  if(!GAS_URL){showToast('GAS URLを設定してください');return;}
+  showToast('配当データを取得中...',5000);
+  try{
+    const r=await fetch(GAS_URL,{
+      method:'POST',
+      body:JSON.stringify({action:'getDividends',ticker:a.ticker}),
+      headers:{'Content-Type':'text/plain'},
+      redirect:'follow'
+    });
+    const j=await r.json();
+    if(!j.success){showToast('❌ 取得失敗: '+(j.error||''));return;}
+    if(!j.dividends||j.dividends.length===0){showToast('配当データなし（無配当銘柄の可能性があります）');return;}
+    // Yahoo Financeの配当は1株あたり金額なので保有数量を掛けて合計を計算
+    const s=calcStats(a);
+    const rate=a.cur==='USD'?(S.usdJpy||150):1;
+    // 既存の自動取得分を一旦削除して再取得
+    const manualDivs=(a.dividends||[]).filter(d=>!d.auto);
+    const autoDivs=j.dividends.map(d=>({
+      id:'auto-'+d.date,
+      date:d.date,
+      amountPerShare:d.amount,
+      totalAmount:Math.round(d.amount*s.qty*rate),
+      currency:j.currency,
+      note:'自動取得',
+      auto:true
+    }));
+    a.dividends=[...manualDivs,...autoDivs].sort((x,y)=>x.date.localeCompare(y.date));
+    // 直近の年間1株配当も更新（直近1年分の合計）
+    const oneYearAgo=new Date();oneYearAgo.setFullYear(oneYearAgo.getFullYear()-1);
+    const recentDivs=j.dividends.filter(d=>new Date(d.date)>oneYearAgo);
+    a.annualDividendPerShare=recentDivs.reduce((s,d)=>s+d.amount,0);
+    await saveAndToast(`✅ ${j.dividends.length}件の配当データを取得しました`);
+    renderDetailDividend(a);
+  }catch(e){showToast('❌ エラー: '+e.message);}
+}
+
+function openAddDividendModal(assetId){
+  const a=S.assets.find(x=>x.id===assetId);
+  const today=new Date().toISOString().split('T')[0];
+  showModal(`<div class="md-t">${a.name} — 配当を手動入力</div>
+    <div class="fg"><label class="fl">受取日</label><input id="dv-dt" type="date" value="${today}"></div>
+    <div class="fg"><label class="fl">1株配当額（${a.cur||'JPY'}）</label><input id="dv-ps" type="number" placeholder="0" step="any"></div>
+    <div class="fg"><label class="fl">受取合計額（円）</label><input id="dv-tot" type="number" placeholder="0" step="any"></div>
+    <div class="fg"><label class="fl">メモ（任意）</label><input id="dv-nt" placeholder="中間配当・期末配当など"></div>
+    <div class="ma"><button class="btn-s" id="dv-cancel">キャンセル</button><button class="btn-p" id="dv-submit">追加</button></div>`);
+  document.getElementById('dv-cancel').addEventListener('click',closeModal);
+  document.getElementById('dv-ps').addEventListener('input',()=>{
+    const s=calcStats(a);const rate=a.cur==='USD'?(S.usdJpy||150):1;
+    const ps=+document.getElementById('dv-ps').value;
+    if(ps&&s.qty) document.getElementById('dv-tot').value=Math.round(ps*s.qty*rate);
+  });
+  document.getElementById('dv-submit').addEventListener('click',()=>{
+    const date=document.getElementById('dv-dt').value;
+    const ps=+document.getElementById('dv-ps').value;
+    const tot=+document.getElementById('dv-tot').value;
+    if(!tot){alert('受取合計額を入力してください');return;}
+    if(!a.dividends)a.dividends=[];
+    a.dividends.push({id:uid(),date,amountPerShare:ps||0,totalAmount:tot,note:document.getElementById('dv-nt').value||'',auto:false});
+    a.dividends.sort((x,y)=>x.date.localeCompare(y.date));
+    saveAndToast('配当を記録しました ✓');closeModal();renderDetailDividend(a);
+  });
+}
+
+function deleteDividend(assetId,divId){
+  if(!confirm('この配当記録を削除しますか？'))return;
+  const a=S.assets.find(x=>x.id===assetId);if(!a)return;
+  a.dividends=(a.dividends||[]).filter(d=>d.id!==divId);
+  saveAndToast('削除しました ✓');renderDetailDividend(a);
+}
+
+function renderDetailDividend(a){
+  const el=document.getElementById('detailBody');if(!el)return;
+  // 詳細タブが開いている場合のみ配当セクションを追加
+  const divSec=document.getElementById('divSection');
+  if(!divSec)return;
+  const ds=calcDividendStats(a);
+  const divs=a.dividends||[];
+  divSec.innerHTML=`
+    <div class="sh" style="margin-top:18px">
+      <div class="sh-t">配当履歴</div>
+      <div style="display:flex;gap:8px">
+        ${a.ticker?`<button class="btn-s" id="fetchDivBtn">🔄 自動取得</button>`:''}
+        <button class="btn-p" id="addDivBtn">+ 手動入力</button>
+      </div>
+    </div>
+    <div class="m3" style="margin-bottom:14px">
+      <div class="mc"><div class="mc-l">累計配当（円）</div><div class="mc-v sm pos">${fjpy(ds.total)}</div></div>
+      <div class="mc"><div class="mc-l">今年の配当（円）</div><div class="mc-v sm pos">${fjpy(ds.annual)}</div></div>
+      <div class="mc"><div class="mc-l">年間配当見込み</div><div class="mc-v sm" style="color:var(--tx2)">${fjpy(ds.estAnnual)}</div></div>
+    </div>
+    <div class="m3" style="margin-bottom:14px">
+      <div class="mc"><div class="mc-l">配当利回り（時価）</div><div class="mc-v sm pos">${ds.yieldOnPrice.toFixed(2)}%</div></div>
+      <div class="mc"><div class="mc-l">配当利回り（取得価額）</div><div class="mc-v sm pos">${ds.yieldOnCost.toFixed(2)}%</div></div>
+      <div class="mc"><div class="mc-l">受取回数</div><div class="mc-v sm" style="color:var(--tx2)">${ds.count}回</div></div>
+    </div>
+    ${!divs.length?`<div class="empty" style="padding:16px">配当記録がありません<br><span style="font-size:11px">「自動取得」または「手動入力」で追加してください</span></div>`:
+    `<table><thead><tr><th>受取日</th><th style="text-align:right">1株配当</th><th style="text-align:right">受取合計</th><th>メモ</th><th></th></tr></thead><tbody>`+
+    [...divs].reverse().map(d=>`<tr>
+      <td>${d.date}</td>
+      <td style="text-align:right">${d.amountPerShare?fjpy(+d.amountPerShare):'—'}</td>
+      <td style="text-align:right" class="pos">${fjpy(+d.totalAmount)}</td>
+      <td style="color:var(--tx3);font-family:inherit">${d.note||'—'}${d.auto?' <span style="font-size:10px;color:var(--tx3)">(自)</span>':''}</td>
+      <td><button class="ib dv-del" data-dvid="${d.id}">🗑</button></td>
+    </tr>`).join('')+
+    `</tbody></table>`}`;
+  document.getElementById('addDivBtn')?.addEventListener('click',()=>openAddDividendModal(a.id));
+  document.getElementById('fetchDivBtn')?.addEventListener('click',()=>fetchDividends(a.id));
+  divSec.querySelectorAll('.dv-del').forEach(b=>b.addEventListener('click',()=>deleteDividend(a.id,b.dataset.dvid)));
+}
+
+function renderDividendDash(){
+  const el=document.getElementById('dividendBody');
+  // 配当がある資産を抽出
+  const assetsWithDiv=S.assets.filter(a=>a.dividends&&a.dividends.length>0);
+  // 年別集計
+  const byYear={};
+  S.assets.forEach(a=>{
+    (a.dividends||[]).forEach(d=>{
+      const y=new Date(d.date).getFullYear();
+      if(!byYear[y])byYear[y]=0;
+      byYear[y]+=(+d.totalAmount||0);
+    });
+  });
+  const years=Object.keys(byYear).sort();
+  const totalAll=Object.values(byYear).reduce((s,v)=>s+v,0);
+  const thisYear=new Date().getFullYear();
+  const totalThisYear=byYear[thisYear]||0;
+  // 全銘柄の配当利回り合計（時価ベース）
+  let totalVal=0,totalEstDiv=0;
+  S.assets.forEach(a=>{
+    const s=calcStats(a);totalVal+=s.val;
+    const ds=calcDividendStats(a);totalEstDiv+=ds.estAnnual;
+  });
+  const overallYield=totalVal>0?totalEstDiv/totalVal*100:0;
+
+  el.innerHTML=`
+    <div class="m3" style="margin-bottom:16px">
+      <div class="mc"><div class="mc-l">累計配当合計</div><div class="mc-v pos">${fjpy(totalAll)}</div></div>
+      <div class="mc"><div class="mc-l">今年の配当合計</div><div class="mc-v sm pos">${fjpy(totalThisYear)}</div></div>
+      <div class="mc"><div class="mc-l">ポートフォリオ配当利回り</div><div class="mc-v sm pos">${overallYield.toFixed(2)}%</div></div>
+    </div>
+    <div class="bx" style="margin-bottom:16px">
+      <div class="bx-t">年間配当推移</div>
+      ${!years.length?`<div style="font-size:12px;color:var(--tx3);padding:16px 0">配当記録がありません</div>`:
+      `<div style="display:flex;align-items:flex-end;gap:8px;height:120px;margin-bottom:8px">
+        ${years.map(y=>{
+          const pct=byYear[y]/Math.max(...Object.values(byYear))*100;
+          const isThis=+y===thisYear;
+          return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
+            <div style="font-size:10px;font-family:monospace;color:var(--tx3)">${fjpy(byYear[y])}</div>
+            <div style="width:100%;background:${isThis?'#1D9E75':'#378ADD'};border-radius:3px 3px 0 0;height:${pct}%"></div>
+            <div style="font-size:10px;color:var(--tx3)">${y}</div>
+          </div>`;
+        }).join('')}
+      </div>`}
+    </div>
+    <div class="bx">
+      <div class="bx-t">銘柄別 配当サマリー</div>
+      ${!assetsWithDiv.length?`<div style="font-size:12px;color:var(--tx3);padding:8px 0">配当記録のある銘柄がありません<br><span style="font-size:11px">詳細タブから各銘柄の配当を登録してください</span></div>`:
+      `<table><thead><tr><th>銘柄</th><th style="text-align:right">累計配当</th><th style="text-align:right">今年</th><th style="text-align:right">利回り(時価)</th><th style="text-align:right">利回り(取得)</th></tr></thead><tbody>`+
+      assetsWithDiv.map(a=>{
+        const ds=calcDividendStats(a);
+        return`<tr style="cursor:pointer" onclick="openDetail('${a.id}')">
+          <td style="color:var(--tx);font-family:inherit">${a.name}</td>
+          <td style="text-align:right" class="pos">${fjpy(ds.total)}</td>
+          <td style="text-align:right" class="pos">${fjpy(ds.annual)}</td>
+          <td style="text-align:right" class="pos">${ds.yieldOnPrice.toFixed(2)}%</td>
+          <td style="text-align:right" class="pos">${ds.yieldOnCost.toFixed(2)}%</td>
+        </tr>`;
+      }).join('')+`</tbody></table>`}
+    </div>`;
 }
 
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
