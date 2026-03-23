@@ -115,7 +115,7 @@ textarea{resize:vertical;font-family:monospace;font-size:11px;}
 <button class="nb" data-tab="dividend">配当</button>
 </div>
 <div class="pnl active" id="pnl-dash">
-  <div class="m4" id="sumCards"></div>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:16px" id="sumCards"></div>
   <div class="g2">
     <div class="bx">
       <div class="bx-t">資産配分</div>
@@ -248,11 +248,16 @@ function switchTab(tab){
 
 function renderDash(){
   const g=grandTotal();
+  const unrPct = g.cost>0 ? g.unr/g.cost*100 : 0;
+  const totalPnl = g.unr + g.rea;
+  const totalPct = g.cost>0 ? totalPnl/g.cost*100 : 0;
   document.getElementById('sumCards').innerHTML=
     `<div class="mc"><div class="mc-l">総資産（時価）</div><div class="mc-v">${fjpy(g.val)}</div></div>`+
     `<div class="mc"><div class="mc-l">取得金額合計</div><div class="mc-v sm" style="color:var(--tx2)">${fjpy(g.cost)}</div></div>`+
-    `<div class="mc"><div class="mc-l">含み損益</div><div class="mc-v sm ${pcls(g.unr)}">${fjpy(g.unr)}</div></div>`+
-    `<div class="mc"><div class="mc-l">確定損益</div><div class="mc-v sm ${pcls(g.rea)}">${fjpy(g.rea)}</div></div>`;
+    `<div class="mc"><div class="mc-l">含み損益</div><div class="mc-v sm ${pcls(g.unr)}">${fjpy(g.unr)}<span style="font-size:11px;margin-left:4px">${g.cost>0?fpct(unrPct):''}</span></div></div>`+
+    `<div class="mc"><div class="mc-l">確定損益</div><div class="mc-v sm ${pcls(g.rea)}">${fjpy(g.rea)}</div></div>`+
+    `<div class="mc"><div class="mc-l">トータルリターン<br><span style="font-size:9px;font-weight:400">含み＋確定</span></div><div class="mc-v sm ${pcls(totalPnl)}">${fjpy(totalPnl)}<span style="font-size:11px;margin-left:4px">${g.cost>0?fpct(totalPct):''}</span></div></div>`+
+    `<div class="mc"><div class="mc-l">含み益率<br><span style="font-size:9px;font-weight:400">確定除く</span></div><div class="mc-v sm ${pcls(unrPct)}">${g.cost>0?fpct(unrPct):'—'}</div></div>`;
 
   const items=cmode==='cat'
     ?Object.keys(CAT).map(k=>({label:CAT[k].emoji+' '+CAT[k].label,val:g.cat[k]?.val||0,color:CAT[k].color})).filter(x=>x.val>0)
