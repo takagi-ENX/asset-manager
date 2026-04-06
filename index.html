@@ -395,8 +395,22 @@ async function fetchPrices(){
   const btn=document.getElementById('fetchBtn');
   btn.textContent='取得中...';btn.disabled=true;
   let log=[];
-  // 為替
-  try{const r=await fetch('https://api.frankfurter.app/latest?from=USD&to=JPY');const j=await r.json();S.usdJpy=j.rates.JPY;document.getElementById('fxDisp').textContent=S.usdJpy.toFixed(2);log.push('✅ USD/JPY: '+S.usdJpy.toFixed(2));}catch(e){log.push('❌ 為替取得失敗: '+e.message);}
+  // 為替（GAS経由 → Frankfurter直接の順で試行）
+  try{
+    let fxOk=false;
+    if(GAS_URL){
+      try{
+        const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'getFx'}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
+        const j=await r.json();
+        if(j.success&&j.rate){S.usdJpy=j.rate;document.getElementById('fxDisp').textContent=S.usdJpy.toFixed(2);log.push('✅ USD/JPY: '+S.usdJpy.toFixed(2)+' (GAS)');fxOk=true;}
+      }catch(e){}
+    }
+    if(!fxOk){
+      const r=await fetch('https://api.frankfurter.app/latest?from=USD&to=JPY');
+      const j=await r.json();S.usdJpy=j.rates.JPY;document.getElementById('fxDisp').textContent=S.usdJpy.toFixed(2);
+      log.push('✅ USD/JPY: '+S.usdJpy.toFixed(2));
+    }
+  }catch(e){log.push('⚠️ 為替取得失敗（Frankfurter一時停止中）: 前回値 '+S.usdJpy.toFixed(2)+' を使用');}
   // 仮想通貨
   // 仮想通貨: GAS経由
   for(const a of S.assets.filter(a=>a.category==='crypto'&&a.coinId)){
