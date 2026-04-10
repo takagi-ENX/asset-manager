@@ -445,6 +445,7 @@ async function fetchPrices(){
     return null;
   }
 
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
   for(const a of S.assets.filter(a=>a.ticker)){
     try{
       if(!GAS_URL){
@@ -470,6 +471,7 @@ async function fetchPrices(){
     }catch(e){
       log.push(`❌ ${a.name} (${a.ticker}): ${e.message}`);
     }
+    await sleep(800); // Stooqの連続リクエスト制限を回避
   }
   // 仮想通貨もGAS経由に変更
   persist();
