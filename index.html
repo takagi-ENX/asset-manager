@@ -158,6 +158,11 @@ const pcls=n=>n>=0?'pos':'neg';
 
 // ─── データ保存・読込（GAS優先、localStorageをキャッシュに使用） ───
 async function persist(){
+  // 空データは絶対に保存しない（データ消失防止）
+  if(!S.assets||S.assets.length===0){
+    console.warn('空データの保存をスキップしました');
+    return;
+  }
   const json=JSON.stringify(S);
   try{localStorage.setItem(LSKEY,json);}catch(e){}
   if(GAS_URL){
@@ -185,19 +190,38 @@ async function loadData(){
       const j=await r.json();
       if(j.success&&j.data){
         const parsed=JSON.parse(j.data);
-        if(Array.isArray(parsed.assets)){
+        if(Array.isArray(parsed.assets)&&parsed.assets.length>0){
+          // GASにデータがある場合のみ採用
           S=parsed;
           try{localStorage.setItem(LSKEY,j.data);}catch(e){}
-          return 'クラウドからデータを読み込みました';
+          return 'クラウドからデータを読み込みました（'+parsed.assets.length+'件）';
+        } else if(Array.isArray(parsed.assets)&&parsed.assets.length===0){
+          // GASが空の場合はローカルを優先
+          console.warn('GASデータが空のためローカルを確認します');
         }
       }
     }catch(e){console.warn('GAS読込失敗、ローカルにフォールバック:',e);}
   }
+  // ローカルストレージから読み込み
   const keys=[LSKEY,'asset-manager-v7','am-v7','am-v6','am-v5','am-v4'];
   for(const k of keys){
     try{
       const r=localStorage.getItem(k);
-      if(r){const p=JSON.parse(r);if(Array.isArray(p.assets)){S=p;if(k!==LSKEY)try{localStorage.setItem(LSKEY,r);}catch(e){}return k!==LSKEY?'ローカルの旧データを引き継ぎました':null;}}
+      if(r){
+        const p=JSON.parse(r);
+        if(Array.isArray(p.assets)&&p.assets.length>0){
+          S=p;
+          if(k!==LSKEY)try{localStorage.setItem(LSKEY,r);}catch(e){}
+          // ローカルにデータがあればGASにも同期（空上書き防止）
+          if(GAS_URL){
+            try{
+              await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:r}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
+              console.log('ローカルデータをGASに同期しました');
+            }catch(e){}
+          }
+          return k!==LSKEY?'ローカルの旧データを引き継ぎGASに同期しました':'ローカルからデータを読み込みました';
+        }
+      }
     }catch(e){}
   }
   return null;
