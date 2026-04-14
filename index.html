@@ -225,7 +225,7 @@ function allTx(a){return[...(a.purchases||[]).map(p=>({...p,type:'buy'})),...(a.
 function calcStats(a){
   if(isSimple(a)){const v=+(a.bal||0);return{qty:0,avg:0,cost:v,val:v,pnl:0,pct:0,rPnl:0};}
   const buys=a.purchases||[],sells=a.sells||[];
-  const rate=a.cur==='USD'?(S.usdJpy||150):1;
+  const rate=a.cur==='USD'?(+S.usdJpy||150):1;
   const tBQ=buys.reduce((s,p)=>s+(+p.qty),0);
   const tBC=buys.reduce((s,p)=>s+(+p.price)*(+p.qty),0);
   const avg=tBQ>0?tBC/tBQ:0;
@@ -425,7 +425,13 @@ async function fetchPrices(){
       const j=await r.json();S.usdJpy=j.rates.JPY;document.getElementById('fxDisp').textContent=S.usdJpy.toFixed(2);
       log.push('✅ USD/JPY: '+S.usdJpy.toFixed(2));
     }
-  }catch(e){log.push('⚠️ 為替取得失敗（Frankfurter一時停止中）: 前回値 '+S.usdJpy.toFixed(2)+' を使用');}
+  }catch(e){
+    // 為替取得完全失敗時はデフォルト値を保証
+    if(!S.usdJpy||isNaN(S.usdJpy)) S.usdJpy=150;
+    log.push('⚠️ 為替取得失敗（Frankfurter一時停止中）: 前回値 '+S.usdJpy.toFixed(2)+' を使用');
+  }
+  // 為替レートの最終保証（NaN防止）
+  if(!S.usdJpy||isNaN(S.usdJpy)) S.usdJpy=150;
   // 仮想通貨
   // 仮想通貨: GAS経由
   for(const a of S.assets.filter(a=>a.category==='crypto'&&a.coinId)){
@@ -468,7 +474,7 @@ async function fetchPrices(){
         a.curPrice=price;
         if(currency==='USD'){
           a.curPriceUSD=price;
-          a.curPriceJPY=price*(S.usdJpy||150);
+          a.curPriceJPY=price*((+S.usdJpy)||150);
         }else{
           a.curPriceJPY=price;
           if(priceUSD) a.curPriceUSD=priceUSD;
@@ -500,7 +506,7 @@ async function fetchPrices(){
 function calcDividendStats(a){
   const divs=a.dividends||[];
   const s=calcStats(a);
-  const rate=a.cur==='USD'?(S.usdJpy||150):1;
+  const rate=a.cur==='USD'?(+S.usdJpy||150):1;
   const total=divs.reduce((sum,d)=>sum+(+d.totalAmount||0),0);
   // 年間配当（今年）
   const thisYear=new Date().getFullYear();
@@ -527,7 +533,7 @@ async function fetchDividends(assetId){
     if(!j.dividends||j.dividends.length===0){showToast('配当データなし（無配当銘柄の可能性があります）');return;}
     // Yahoo Financeの配当は1株あたり金額なので保有数量を掛けて合計を計算
     const s=calcStats(a);
-    const rate=a.cur==='USD'?(S.usdJpy||150):1;
+    const rate=a.cur==='USD'?(+S.usdJpy||150):1;
     // 既存の自動取得分を一旦削除して再取得
     const manualDivs=(a.dividends||[]).filter(d=>!d.auto);
     const autoDivs=j.dividends.map(d=>({
