@@ -167,12 +167,8 @@ async function persist(){
   try{localStorage.setItem(LSKEY,json);}catch(e){}
   if(GAS_URL){
     try{
-      const r=await fetch(GAS_URL,{
-        method:'POST',
-        body:JSON.stringify({action:'saveData',data:json}),
-        headers:{'Content-Type':'text/plain'},
-        redirect:'follow'
-      });
+      const b64=btoa(unescape(encodeURIComponent(json)));
+      const r=await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
       const j=await r.json();
       if(!j.success) console.warn('GAS保存失敗:',j.error);
     }catch(e){console.warn('GAS保存失敗:',e);}
@@ -181,12 +177,7 @@ async function persist(){
 async function loadData(){
   if(GAS_URL){
     try{
-      const r=await fetch(GAS_URL,{
-        method:'POST',
-        body:JSON.stringify({action:'getData'}),
-        headers:{'Content-Type':'text/plain'},
-        redirect:'follow'
-      });
+      const r=await fetch(GAS_URL+'?action=getData', {redirect:'follow'});
       const j=await r.json();
       if(j.success&&j.data){
         const parsed=JSON.parse(j.data);
@@ -215,7 +206,7 @@ async function loadData(){
           // ローカルにデータがあればGASにも同期（空上書き防止）
           if(GAS_URL){
             try{
-              await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:r}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
+              const b64=btoa(unescape(encodeURIComponent(r)));await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
               console.log('ローカルデータをGASに同期しました');
             }catch(e){}
           }
@@ -424,7 +415,7 @@ async function fetchPrices(){
     let fxOk=false;
     if(GAS_URL){
       try{
-        const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'getFx'}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
+        const r=await fetch(GAS_URL+'?action=getFx', {redirect:'follow'});
         const j=await r.json();
         if(j.success&&j.rate){S.usdJpy=j.rate;document.getElementById('fxDisp').textContent=S.usdJpy.toFixed(2);log.push('✅ USD/JPY: '+S.usdJpy.toFixed(2)+' (GAS)');fxOk=true;}
       }catch(e){}
@@ -453,19 +444,14 @@ async function fetchPrices(){
   // 株式・ETF
   // GAS_URL は起動時に設定済み
 
-  async function gasPost(payload){
-    const r = await fetch(GAS_URL,{
-      method:'POST',
-      body:JSON.stringify(payload),
-      headers:{'Content-Type':'text/plain'},
-      redirect:'follow'
-    });
+  async function gasGet(params){
+    const qs=Object.entries(params).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&');
+    const r=await fetch(GAS_URL+'?'+qs,{redirect:'follow'});
     return await r.json();
   }
   async function fetchViaGAS(ticker, type='stock'){
     if(!GAS_URL) return null;
-    const j = await gasPost({action:'getPrice',ticker,type});
-    if(j.success) return j;
+    try{const j=await gasGet({action:'getPrice',ticker,type});if(j.success)return j;}catch(e){}
     return null;
   }
 
@@ -535,12 +521,7 @@ async function fetchDividends(assetId){
   if(!GAS_URL){showToast('GAS URLを設定してください');return;}
   showToast('配当データを取得中...',5000);
   try{
-    const r=await fetch(GAS_URL,{
-      method:'POST',
-      body:JSON.stringify({action:'getDividends',ticker:a.ticker}),
-      headers:{'Content-Type':'text/plain'},
-      redirect:'follow'
-    });
+    const r=await fetch(GAS_URL+'?action=getDividends&ticker='+encodeURIComponent(a.ticker),{redirect:'follow'});
     const j=await r.json();
     if(!j.success){showToast('❌ 取得失敗: '+(j.error||''));return;}
     if(!j.dividends||j.dividends.length===0){showToast('配当データなし（無配当銘柄の可能性があります）');return;}
