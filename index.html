@@ -167,11 +167,25 @@ async function persist(){
   try{localStorage.setItem(LSKEY,json);}catch(e){}
   if(GAS_URL){
     try{
-      const b64=btoa(unescape(encodeURIComponent(json)));
-      const r=await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
+      // POSTボディで送信（URL長制限を回避）
+      const r=await fetch(GAS_URL,{
+        method:'POST',
+        body:JSON.stringify({action:'saveData',data:json}),
+        headers:{'Content-Type':'text/plain'},
+        redirect:'follow'
+      });
       const j=await r.json();
-      if(!j.success) console.warn('GAS保存失敗:',j.error);
-    }catch(e){console.warn('GAS保存失敗:',e);}
+      if(j.success) console.log('GAS保存成功:',j.count,'件');
+      else console.warn('GAS保存失敗:',j.error);
+    }catch(e){
+      // POSTが失敗した場合はGETで試みる（小さいデータのみ）
+      if(json.length < 3000){
+        try{
+          const b64=btoa(unescape(encodeURIComponent(json)));
+          await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
+        }catch(e2){}
+      }
+    }
   }
 }
 async function loadData(){
@@ -206,7 +220,7 @@ async function loadData(){
           // ローカルにデータがあればGASにも同期（空上書き防止）
           if(GAS_URL){
             try{
-              const b64=btoa(unescape(encodeURIComponent(r)));await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
+              await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:r}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
               console.log('ローカルデータをGASに同期しました');
             }catch(e){}
           }
