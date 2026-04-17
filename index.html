@@ -390,14 +390,47 @@ function buildSubSec(cat,a){
 function updTH(){const sub=document.getElementById('f-sub');if(!sub)return;const ok=SUBTYPES[sub.value]?.tickerOk;document.getElementById('f-tw').style.display=ok?'block':'none';document.getElementById('f-nw').style.display=ok?'none':'block';const h=document.getElementById('f-th');if(h)h.textContent=TICKER_HELPS[sub.value]||'';}
 function baseFields(cat,a){let h='';if(cat==='deposit'||cat==='other')h+=`<div class="fg"><label class="fl">残高・評価額（円）</label><input id="f-bal" type="number" value="${a?.bal||0}" step="any"></div>`;if(cat!=='deposit'&&cat!=='other')h+=`<div class="fg"><label class="fl">購入通貨</label><select id="f-cur"><option value="JPY"${(a?.cur||'JPY')==='JPY'?' selected':''}>JPY（円）</option><option value="USD"${a?.cur==='USD'?' selected':''}>USD（ドル）</option></select></div>`;if(cat==='crypto')h+=`<div class="fg"><label class="fl">CoinGecko ID（自動取得用）</label><input id="f-cid" value="${a?.coinId||''}" placeholder="bitcoin / ethereum"><div class="fh">bitcoin / ethereum / solana / ripple / dogecoin</div></div>`;h+=`<div class="fg"><label class="fl">メモ（任意）</label><input id="f-nte" value="${a?.note||''}" placeholder="SBI証券・楽天証券 など"></div>`;return h;}
 function bindFE(){
-  document.getElementById('f-cat')?.addEventListener('change',function(){document.getElementById('f-sw').innerHTML=buildSubSec(this.value,null);document.getElementById('f-base').innerHTML=baseFields(this.value,null);document.getElementById('f-sub')?.addEventListener('change',updTH);});
+  document.getElementById('f-cat')?.addEventListener('change',function(){
+    // カテゴリ変更時は現在の入力値を引き継ぐ（ティッカー・通貨クリア防止）
+    const curA={
+      subtype:document.getElementById('f-sub')?.value,
+      ticker:document.getElementById('f-tkr')?.value,
+      cur:document.getElementById('f-cur')?.value,
+      coinId:document.getElementById('f-cid')?.value,
+      bal:document.getElementById('f-bal')?.value,
+      note:document.getElementById('f-nte')?.value,
+    };
+    document.getElementById('f-sw').innerHTML=buildSubSec(this.value,curA);
+    document.getElementById('f-base').innerHTML=baseFields(this.value,curA);
+    document.getElementById('f-sub')?.addEventListener('change',updTH);
+  });
   document.getElementById('f-sub')?.addEventListener('change',updTH);
   document.getElementById('f-cancel')?.addEventListener('click',closeModal);
   document.getElementById('f-submit')?.addEventListener('click',submitAsset);
 }
 function openAddModal(){editId=null;showModal(`<div class="md-t">資産を追加</div><div class="fg"><label class="fl">カテゴリ</label><select id="f-cat">${Object.keys(CAT).map(k=>`<option value="${k}">${CAT[k].emoji} ${CAT[k].label}</option>`).join('')}</select></div><div class="fg"><label class="fl">名称</label><input id="f-nm" placeholder="例: eMAXIS Slim 全世界株式"></div><div id="f-sw">${buildSubSec('deposit',null)}</div><div id="f-base">${baseFields('deposit',null)}</div><div class="ma"><button class="btn-s" id="f-cancel">キャンセル</button><button class="btn-p" id="f-submit">追加</button></div>`);bindFE();}
 function openEditModal(id){editId=id;const a=S.assets.find(x=>x.id===id);if(!a)return;showModal(`<div class="md-t">資産を編集</div><div class="fg"><label class="fl">カテゴリ</label><select id="f-cat">${Object.keys(CAT).map(k=>`<option value="${k}"${a.category===k?' selected':''}>${CAT[k].emoji} ${CAT[k].label}</option>`).join('')}</select></div><div class="fg"><label class="fl">名称</label><input id="f-nm" value="${a.name}"></div><div id="f-sw">${buildSubSec(a.category,a)}</div><div id="f-base">${baseFields(a.category,a)}</div><div class="ma"><button class="btn-s" id="f-cancel">キャンセル</button><button class="btn-p" id="f-submit">更新</button></div>`);bindFE();}
-function submitAsset(){const name=(document.getElementById('f-nm')?.value||'').trim();if(!name){alert('名称を入力してください');return;}const cat=document.getElementById('f-cat').value,sub=document.getElementById('f-sub')?.value||undefined,id=editId||uid(),old=S.assets.find(x=>x.id===id)||{},ok=sub&&SUBTYPES[sub]?.tickerOk;const a={...old,id,name,category:cat,subtype:sub,ticker:ok?(document.getElementById('f-tkr')?.value?.trim()||undefined):undefined,coinId:(document.getElementById('f-cid')?.value?.trim()||'').toLowerCase()||undefined,bal:(cat==='deposit'||cat==='other')?+(document.getElementById('f-bal')?.value||0):old.bal,cur:document.getElementById('f-cur')?.value||'JPY',note:document.getElementById('f-nte')?.value||'',purchases:old.purchases||[],sells:old.sells||[],dividends:old.dividends||[]};if(editId)S.assets=S.assets.map(x=>x.id===id?a:x);else S.assets.push(a);saveAndToast(editId?'更新しました ✓':'追加しました ✓');closeModal();renderList();}
+function submitAsset(){const name=(document.getElementById('f-nm')?.value||'').trim();if(!name){alert('名称を入力してください');return;}const cat=document.getElementById('f-cat').value,sub=document.getElementById('f-sub')?.value||undefined,id=editId||uid(),old=S.assets.find(x=>x.id===id)||{},ok=sub&&SUBTYPES[sub]?.tickerOk;// ticker: subtypeがtickerOk=falseでも既存値を保持（クリアしない）
+const newTicker = ok
+  ? (document.getElementById('f-tkr')?.value?.trim()||undefined)
+  : (old.ticker||undefined); // 既存ティッカーを維持
+const newCur = document.getElementById('f-cur')?.value || old.cur || 'JPY';
+const a={...old,id,name,category:cat,subtype:sub,
+  ticker:newTicker,
+  coinId:(document.getElementById('f-cid')?.value?.trim()||'').toLowerCase()||old.coinId||undefined,
+  bal:(cat==='deposit'||cat==='other')?+(document.getElementById('f-bal')?.value||0):old.bal,
+  cur:newCur,
+  note:document.getElementById('f-nte')?.value||'',
+  purchases:old.purchases||[],
+  sells:old.sells||[],
+  dividends:old.dividends||[],
+  // 価格情報を引き継ぐ
+  curPrice:old.curPrice,
+  curPriceJPY:old.curPriceJPY,
+  curPriceUSD:old.curPriceUSD,
+  updatedAt:old.updatedAt,
+  annualDividendPerShare:old.annualDividendPerShare,
+};if(editId)S.assets=S.assets.map(x=>x.id===id?a:x);else S.assets.push(a);saveAndToast(editId?'更新しました ✓':'追加しました ✓');closeModal();renderList();}
 function deleteAsset(id){if(!confirm('この資産を削除しますか？'))return;S.assets=S.assets.filter(a=>a.id!==id);if(curId===id){curId=null;document.getElementById('nbDetail').textContent='詳細';}saveAndToast('削除しました ✓');renderList();}
 
 function openBuyModal(aid){const a=S.assets.find(x=>x.id===aid),today=new Date().toISOString().split('T')[0];showModal(`<div class="md-t">${a.name} — 購入を追加</div><div class="fg"><label class="fl">購入日</label><input id="mf-dt" type="date" value="${today}"></div><div class="fg"><label class="fl">取得単価（${a.cur||'JPY'}）</label><input id="mf-pr" type="number" placeholder="0" step="any"></div><div class="fg"><label class="fl">数量</label><input id="mf-qt" type="number" placeholder="0" step="any"></div><div class="fg"><label class="fl">メモ（任意）</label><input id="mf-nt" placeholder="SBI証券など"></div><div class="ma"><button class="btn-s" id="m-cancel">キャンセル</button><button class="btn-p" id="m-submit">追加</button></div>`);document.getElementById('m-cancel').addEventListener('click',closeModal);document.getElementById('m-submit').addEventListener('click',()=>{const price=+document.getElementById('mf-pr').value,qty=+document.getElementById('mf-qt').value;if(!price||!qty){alert('単価と数量を入力してください');return;}if(!a.purchases)a.purchases=[];a.purchases.push({id:uid(),date:document.getElementById('mf-dt').value,price,qty,note:document.getElementById('mf-nt').value||''});a.purchases.sort((x,y)=>x.date.localeCompare(y.date));saveAndToast('購入を記録しました ✓');closeModal();renderDetail();});}
