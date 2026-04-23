@@ -156,16 +156,18 @@ const fpct=n=>(n>=0?'+':'')+n.toFixed(2)+'%';
 const fnum=n=>(+n).toLocaleString('ja-JP',{maximumFractionDigits:8});
 const pcls=n=>n>=0?'pos':'neg';
 
-// ─── データ保存・読込（GAS優先、localStorageをキャッシュに使用） ───
+// ─── データ保存・読込（タイムスタンプ比較でGAS/ローカルの新しい方を採用） ───
 async function persist(){
   // 空データは絶対に保存しない（データ消失防止）
   if(!S.assets||S.assets.length===0){
     console.warn('空データの保存をスキップしました');
     return;
   }
+  S.savedAt=new Date().toISOString(); // 保存タイムスタンプ付与
   const json=JSON.stringify(S);
   try{localStorage.setItem(LSKEY,json);}catch(e){}
   if(GAS_URL){
+    let gasSaved=false;
     try{
       // POSTボディで送信（URL長制限を回避）
       const r=await fetch(GAS_URL,{
@@ -175,20 +177,32 @@ async function persist(){
         redirect:'follow'
       });
       const j=await r.json();
-      if(j.success) console.log('GAS保存成功:',j.count,'件');
+      if(j.success){console.log('GAS保存成功:',j.count,'件');gasSaved=true;}
       else console.warn('GAS保存失敗:',j.error);
     }catch(e){
       // POSTが失敗した場合はGETで試みる（小さいデータのみ）
       if(json.length < 3000){
         try{
           const b64=btoa(unescape(encodeURIComponent(json)));
-          await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
+          const r2=await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
+          const j2=await r2.json();
+          if(j2.success)gasSaved=true;
         }catch(e2){}
       }
     }
+    if(!gasSaved)showToast('⚠️ クラウド保存失敗（ローカルのみ保存済）',4000);
   }
 }
 async function loadData(){
+  // ─── ローカルの最新データを先に確認（タイムスタンプ比較用）───
+  let localData=null,localParsed=null,localKey=null;
+  const keys=[LSKEY,'asset-manager-v7','am-v7','am-v6','am-v5','am-v4'];
+  for(const k of keys){
+    try{
+      const r=localStorage.getItem(k);
+      if(r){const p=JSON.parse(r);if(Array.isArray(p.assets)&&p.assets.length>0){localData=r;localParsed=p;localKey=k;break;}}
+    }catch(e){}
+  }
   if(GAS_URL){
     try{
       const r=await fetch(GAS_URL+'?action=getData', {redirect:'follow'});
@@ -196,38 +210,38 @@ async function loadData(){
       if(j.success&&j.data){
         const parsed=JSON.parse(j.data);
         if(Array.isArray(parsed.assets)&&parsed.assets.length>0){
-          // GASにデータがある場合のみ採用
+          // タイムスタンプ比較：ローカルとGASで新しい方を採用
+          const gasTime=parsed.savedAt?new Date(parsed.savedAt).getTime():0;
+          const locTime=localParsed?.savedAt?new Date(localParsed.savedAt).getTime():0;
+          if(locTime>gasTime){
+            // ローカルが新しい → ローカルを採用してGASに同期
+            console.log('ローカルが新しいためGASに同期（ローカル:'+new Date(locTime).toLocaleString()+' / GAS:'+new Date(gasTime).toLocaleString()+'）');
+            S=localParsed;
+            if(localKey!==LSKEY)try{localStorage.setItem(LSKEY,localData);}catch(e){}
+            try{await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'});}catch(e){}
+            return 'ローカルの最新データ（'+localParsed.assets.length+'件）をクラウドに同期しました';
+          }
+          // GASが新しい（またはどちらもタイムスタンプなし）→ GASを採用
           S=parsed;
           try{localStorage.setItem(LSKEY,j.data);}catch(e){}
           return 'クラウドからデータを読み込みました（'+parsed.assets.length+'件）';
         } else if(Array.isArray(parsed.assets)&&parsed.assets.length===0){
-          // GASが空の場合はローカルを優先
           console.warn('GASデータが空のためローカルを確認します');
         }
       }
     }catch(e){console.warn('GAS読込失敗、ローカルにフォールバック:',e);}
   }
-  // ローカルストレージから読み込み
-  const keys=[LSKEY,'asset-manager-v7','am-v7','am-v6','am-v5','am-v4'];
-  for(const k of keys){
-    try{
-      const r=localStorage.getItem(k);
-      if(r){
-        const p=JSON.parse(r);
-        if(Array.isArray(p.assets)&&p.assets.length>0){
-          S=p;
-          if(k!==LSKEY)try{localStorage.setItem(LSKEY,r);}catch(e){}
-          // ローカルにデータがあればGASにも同期（空上書き防止）
-          if(GAS_URL){
-            try{
-              await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:r}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
-              console.log('ローカルデータをGASに同期しました');
-            }catch(e){}
-          }
-          return k!==LSKEY?'ローカルの旧データを引き継ぎGASに同期しました':'ローカルからデータを読み込みました';
-        }
-      }
-    }catch(e){}
+  // ローカルから読み込み
+  if(localParsed){
+    S=localParsed;
+    if(localKey!==LSKEY)try{localStorage.setItem(LSKEY,localData);}catch(e){}
+    if(GAS_URL){
+      try{
+        await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
+        console.log('ローカルデータをGASに同期しました');
+      }catch(e){}
+    }
+    return localKey!==LSKEY?'ローカルの旧データを引き継ぎGASに同期しました':'ローカルからデータを読み込みました';
   }
   return null;
 }
@@ -789,3 +803,4 @@ loadData().then(msg=>{
 </script>
 </body>
 </html>
+
