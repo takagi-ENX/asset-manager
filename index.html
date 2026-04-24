@@ -177,18 +177,23 @@ async function persist(){
         redirect:'follow'
       });
       const j=await r.json();
-      if(j.success){console.log('GAS保存成功:',j.count,'件');gasSaved=true;}
-      else console.warn('GAS保存失敗:',j.error);
-    }catch(e){
-      // POSTが失敗した場合はGETで試みる（小さいデータのみ）
-      if(json.length < 3000){
-        try{
-          const b64=btoa(unescape(encodeURIComponent(json)));
-          const r2=await fetch(GAS_URL+'?action=saveData&d='+encodeURIComponent(b64),{redirect:'follow'});
-          const j2=await r2.json();
-          if(j2.success)gasSaved=true;
-        }catch(e2){}
+      // j.redirected=trueはGASのPOST→GETリダイレクト検出（302で本文消失）
+      if(j.success&&j.count!==undefined){
+        console.log('GAS保存成功:',j.count,'件');gasSaved=true;
+      } else if(j.redirected||!j.success){
+        console.warn('POSTリダイレクト or 失敗、GETで再試行');
+        const r2=await fetch(GAS_URL+'?action=saveData&data='+encodeURIComponent(json),{redirect:'follow'});
+        const j2=await r2.json();
+        if(j2.success){console.log('GAS保存成功(GET):',j2.count,'件');gasSaved=true;}
+        else console.warn('GAS保存失敗(GET):',j2.error);
       }
+    }catch(e){
+      // 例外時もGETで試みる
+      try{
+        const r2=await fetch(GAS_URL+'?action=saveData&data='+encodeURIComponent(json),{redirect:'follow'});
+        const j2=await r2.json();
+        if(j2.success){gasSaved=true;}
+      }catch(e2){}
     }
     if(!gasSaved)showToast('⚠️ クラウド保存失敗（ローカルのみ保存済）',4000);
   }
