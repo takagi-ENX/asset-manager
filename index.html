@@ -194,7 +194,7 @@ async function persist(){
   }
 }
 async function loadData(){
-  // ─── ローカルの最新データを先に確認（タイムスタンプ比較用）───
+  // ─── Step1: ローカルストレージを先に確認（ローカル優先） ───
   let localData=null,localParsed=null,localKey=null;
   const keys=[LSKEY,'asset-manager-v7','am-v7','am-v6','am-v5','am-v4'];
   for(const k of keys){
@@ -210,21 +210,30 @@ async function loadData(){
       if(j.success&&j.data){
         const parsed=JSON.parse(j.data);
         if(Array.isArray(parsed.assets)&&parsed.assets.length>0){
-          // タイムスタンプ比較：ローカルとGASで新しい方を採用
           const gasTime=parsed.savedAt?new Date(parsed.savedAt).getTime():0;
           const locTime=localParsed?.savedAt?new Date(localParsed.savedAt).getTime():0;
-          if(locTime>gasTime){
-            // ローカルが新しい → ローカルを採用してGASに同期
-            console.log('ローカルが新しいためGASに同期（ローカル:'+new Date(locTime).toLocaleString()+' / GAS:'+new Date(gasTime).toLocaleString()+'）');
+          if(!localParsed){
+            // ローカルが空の場合のみGASを採用
+            S=parsed;
+            try{localStorage.setItem(LSKEY,j.data);}catch(e){}
+            return 'クラウドからデータを読み込みました（'+parsed.assets.length+'件）';
+          } else if(gasTime>0&&gasTime>locTime){
+            // GASにsavedAtがあり、かつローカルより明確に新しい場合のみGASを採用（別デバイスからの更新に対応）
+            console.log('GASが新しいためGASを採用（GAS:'+new Date(gasTime).toLocaleString()+' / ローカル:'+new Date(locTime).toLocaleString()+'）');
+            S=parsed;
+            try{localStorage.setItem(LSKEY,j.data);}catch(e){}
+            return 'クラウドの最新データを読み込みました（'+parsed.assets.length+'件）';
+          } else {
+            // ローカルを採用（GASにsavedAtなし・同等・古い場合すべてローカル優先）
+            console.log('ローカルを採用（ローカル:'+new Date(locTime).toLocaleString()+' / GAS:'+new Date(gasTime).toLocaleString()+'）');
             S=localParsed;
             if(localKey!==LSKEY)try{localStorage.setItem(LSKEY,localData);}catch(e){}
-            try{await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'});}catch(e){}
-            return 'ローカルの最新データ（'+localParsed.assets.length+'件）をクラウドに同期しました';
+            if(locTime>gasTime){
+              // ローカルが新しければGASに同期（バックグラウンド）
+              fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'}).catch(()=>{});
+            }
+            return 'ローカルからデータを読み込みました（'+localParsed.assets.length+'件）';
           }
-          // GASが新しい（またはどちらもタイムスタンプなし）→ GASを採用
-          S=parsed;
-          try{localStorage.setItem(LSKEY,j.data);}catch(e){}
-          return 'クラウドからデータを読み込みました（'+parsed.assets.length+'件）';
         } else if(Array.isArray(parsed.assets)&&parsed.assets.length===0){
           console.warn('GASデータが空のためローカルを確認します');
         }
@@ -236,10 +245,7 @@ async function loadData(){
     S=localParsed;
     if(localKey!==LSKEY)try{localStorage.setItem(LSKEY,localData);}catch(e){}
     if(GAS_URL){
-      try{
-        await fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'});
-        console.log('ローカルデータをGASに同期しました');
-      }catch(e){}
+      fetch(GAS_URL,{method:'POST',body:JSON.stringify({action:'saveData',data:localData}),headers:{'Content-Type':'text/plain'},redirect:'follow'}).catch(()=>{});
     }
     return localKey!==LSKEY?'ローカルの旧データを引き継ぎGASに同期しました':'ローカルからデータを読み込みました';
   }
